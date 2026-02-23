@@ -1,0 +1,12 @@
+venv/
+bender
+env/
+
+__pycache__/
+*.pyc
+
+output/
+*.spec
+
+.vscode
+.idea
