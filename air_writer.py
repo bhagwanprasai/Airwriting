@@ -49,8 +49,8 @@ ALPHA_PINCH  = 0.12   # 1-D EMA on the distance value itself
 # ── Pinch — raw pixel distance between thumb tip and index tip ─────────────────
 # Using pixel distance (not normalised) so behaviour is simple and predictable.
 # Tune these two values if needed; they are intentionally generous.
-PINCH_CLOSE_PX = 19   # fingers this close  → start drawing
-PINCH_OPEN_PX  = 20    # fingers this far    → stop  drawing
+PINCH_CLOSE_PX = 22   # fingers this close  → start drawing
+PINCH_OPEN_PX  = 25    # fingers this far    → stop  drawing
 
 # ── Debounce ───────────────────────────────────────────────────────────────────
 DEBOUNCE_FRAMES = 5    # consecutive frames needed to flip pinch state
