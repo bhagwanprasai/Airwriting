@@ -1,5 +1,5 @@
 """
-Air Writer v5 — Finger gesture drawing
+Air Writer v6 — Finger gesture drawing
 =======================================
 Uses MediaPipe legacy Solutions API (mp.solutions.hands) + OpenCV.
 Compatible with mediapipe 0.10.14.
@@ -12,12 +12,17 @@ Gestures:
   S  →  Save canvas PNG
   Q / Esc  →  Quit
 
+Lighting:
+  Adaptive pre-processing is applied before MediaPipe detection
+  to improve tracking in low-light, night, and bright/overexposed
+  environments. The user-facing display is always the original feed.
+
 Requirements:
   pip install mediapipe==0.10.14 opencv-python numpy
 """
 
 import math
-
+import pyautogui
 import cv2
 import numpy as np
 
@@ -30,12 +35,11 @@ except ImportError:
     mp_hands = mp.solutions.hands  # type: ignore
 
 # ── Canvas ─────────────────────────────────────────────────────────────────────
-CANVAS_H = 480
-CANVAS_W = 640
+CANVAS_H ,CANVAS_W = pyautogui.size()
 
 # ── Smoothing ──────────────────────────────────────────────────────────────────
-ALPHA_CURSOR = 0.18   # cursor dot — very smooth
-ALPHA_STROKE = 0.32   # stroke points — slightly faster
+ALPHA_CURSOR = 0.25   # cursor dot — smoother for display
+ALPHA_STROKE = 0.45   # stroke points — faster response for writing
 
 # ── Debounce ───────────────────────────────────────────────────────────────────
 DEBOUNCE_FRAMES = 5   # consecutive frames needed to flip gesture state
@@ -51,10 +55,94 @@ GRACE_FRAMES = 10
 DETECT_SCALE = 1.5
 
 # ── Stroke quality ─────────────────────────────────────────────────────────────
-MIN_MOVE_PX = 2
-PEN_THICK   = 7
+MIN_MOVE_PX = 1    # Lower threshold for smoother lines
+PEN_THICK   = 5    # Slightly thinner for cleaner look
 PEN_COLOR   = (255, 255, 255)
-TIP_RADIUS  = 11
+TIP_RADIUS  = 10
+
+# ── Lighting thresholds ────────────────────────────────────────────────────────
+# Mean luminance (0–255) used to classify the frame's lighting condition.
+LIGHT_LOW_THRESH  = 60    # Below this  → low-light / night mode
+LIGHT_HIGH_THRESH = 190   # Above this  → overexposed / bright mode
+# CLAHE settings for low-light enhancement
+CLAHE_CLIP_LIMIT    = 3.0
+CLAHE_TILE_SIZE     = (8, 8)
+# Gamma for bright/overexposed frames (< 1.0 darkens highlights)
+BRIGHT_GAMMA        = 0.55
+# Smoothing window for brightness estimation (avoids mode-flicker)
+BRIGHTNESS_HISTORY  = 8
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+class LightingNormalizer:
+    """
+    Adaptive per-frame lighting normalizer for MediaPipe input.
+
+    Measures the frame's mean luminance over a short rolling window and
+    selects the appropriate correction:
+
+      Dark  (mean < LIGHT_LOW_THRESH)  → CLAHE on L-channel (LAB)
+        Contrast-limited adaptive histogram equalization boosts local
+        contrast without blowing out bright skin tones.
+
+      Bright (mean > LIGHT_HIGH_THRESH) → power-law gamma compression
+        Reduces over-exposure so hand edges are not washed out.
+
+      Normal                            → pass-through (no op)
+
+    The returned frame is used ONLY as MediaPipe input.
+    The original frame is always shown to the user.
+    """
+
+    def __init__(self) -> None:
+        self._clahe = cv2.createCLAHE(
+            clipLimit=CLAHE_CLIP_LIMIT,
+            tileGridSize=CLAHE_TILE_SIZE,
+        )
+        self._gamma_table = self._build_gamma_table(BRIGHT_GAMMA)
+        self._brightness_buf: list[float] = []
+        self.mode: str = "normal"   # "low" | "bright" | "normal"
+
+    @staticmethod
+    def _build_gamma_table(gamma: float) -> np.ndarray:
+        inv = 1.0 / gamma
+        return np.array(
+            [((i / 255.0) ** inv) * 255 for i in range(256)],
+            dtype=np.uint8,
+        )
+
+    def _smooth_brightness(self, val: float) -> float:
+        self._brightness_buf.append(val)
+        if len(self._brightness_buf) > BRIGHTNESS_HISTORY:
+            self._brightness_buf.pop(0)
+        return float(np.mean(self._brightness_buf))
+
+    def process(self, frame_bgr: np.ndarray) -> np.ndarray:
+        """
+        Return a lighting-corrected copy of frame_bgr for detection.
+        Sets self.mode to "low", "bright", or "normal".
+        """
+        gray = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY)
+        mean_lum = self._smooth_brightness(float(gray.mean()))
+
+        if mean_lum < LIGHT_LOW_THRESH:
+            # ── Low-light / night ─────────────────────────────────────────
+            self.mode = "low"
+            lab = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2LAB)
+            l, a, b = cv2.split(lab)
+            l_eq = self._clahe.apply(l)
+            lab_eq = cv2.merge([l_eq, a, b])
+            return cv2.cvtColor(lab_eq, cv2.COLOR_LAB2BGR)
+
+        elif mean_lum > LIGHT_HIGH_THRESH:
+            # ── Bright / overexposed ──────────────────────────────────────
+            self.mode = "bright"
+            return cv2.LUT(frame_bgr, self._gamma_table)
+
+        else:
+            # ── Normal lighting — pass-through ────────────────────────────
+            self.mode = "normal"
+            return frame_bgr
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -147,16 +235,17 @@ class AirWriter:
     MIDDLE_TIP = 12
     MIDDLE_PIP = 10
 
-    def __init__(self) -> None:
+    def __init__(self, canvas_width: int = 640, canvas_height: int = 480) -> None:
         # Legacy solutions API — no .task file required
         self._hands = mp_hands.Hands(
             static_image_mode=False,
             max_num_hands=1,
-            min_detection_confidence=0.20,
-            min_tracking_confidence=0.20,
+            min_detection_confidence=0.30,
+            min_tracking_confidence=0.30,
         )
 
-        self.canvas = np.zeros((CANVAS_H, CANVAS_W, 3), dtype=np.uint8)
+        # Use camera frame size for canvas (not screen size)
+        self.canvas = np.zeros((canvas_height, canvas_width, 3), dtype=np.uint8)
 
         # Index tip smoothers: cursor display + stroke drawing
         self._cur_smooth = OneEuroFilter(min_cutoff=1.5, beta=0.07)
@@ -170,6 +259,9 @@ class AirWriter:
         self._hold_frames: int = 0   # consecutive frames of hold gesture
 
         self._lost_frames: int = 0
+
+        # Lighting normalizer — improves detection in dark / bright environments
+        self._lighting = LightingNormalizer()
 
     # ── Finger-up detection ───────────────────────────────────────────────────
     @staticmethod
@@ -204,7 +296,12 @@ class AirWriter:
     def process_frame(self, frame_bgr: np.ndarray) -> np.ndarray:
         h, w = frame_bgr.shape[:2]
 
-        rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+        # ── Lighting normalisation (detection only) ──────────────────────
+        # Correct for dark / bright environments before MediaPipe sees the
+        # frame.  display always shows the original unmodified feed.
+        norm_bgr = self._lighting.process(frame_bgr)
+
+        rgb = cv2.cvtColor(norm_bgr, cv2.COLOR_BGR2RGB)
 
         if DETECT_SCALE != 1.0:
             det_rgb = cv2.resize(rgb,
@@ -241,7 +338,7 @@ class AirWriter:
             draw_gesture = index_up and not middle_up
             self._update_gesture(draw_gesture)
 
-            # ── Draw on canvas ────────────────────────────────────────────
+            # ── Draw on canvas ────────────────────────────────────────
             if self._pinching:
                 if self._prev_draw_pt is not None:
                     dx = abs(sx - self._prev_draw_pt[0])
@@ -311,7 +408,8 @@ class AirWriter:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.72, (80, 80, 80),
                             2, cv2.LINE_AA)
 
-        # ── Overlay canvas on feed ────────────────────────────────────────
+        # ── Overlay canvas on feed for visual feedback ────────────────────
+        # Show strokes on camera feed so user sees what they're drawing
         mask = self.canvas.any(axis=2)
         display[mask] = self.canvas[mask]
 
@@ -321,13 +419,38 @@ class AirWriter:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.46, (140, 140, 140), 1,
                     cv2.LINE_AA)
 
+        # Lighting mode indicator (bottom-right)
+        mode = self._lighting.mode
+        mode_labels  = {"low": "Light: LOW",  "bright": "Light: BRIGHT", "normal": "Light: OK"}
+        mode_colors  = {"low": (80, 180, 255), "bright": (0, 200, 255),  "normal": (100, 100, 100)}
+        lbl = mode_labels.get(mode, "Light: ?")
+        col = mode_colors.get(mode, (140, 140, 140))
+        (tw, _), _ = cv2.getTextSize(lbl, cv2.FONT_HERSHEY_SIMPLEX, 0.40, 1)
+        cv2.putText(display, lbl, (w - tw - 6, h - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.40, col, 1, cv2.LINE_AA)
+
         return display
+
+    # ── Properties ────────────────────────────────────────────────────────────
+    @property
+    def is_drawing(self) -> bool:
+        """Returns True if currently in drawing mode"""
+        return self._pinching
+    
+    @property
+    def hand_position(self) -> tuple[int, int] | None:
+        """Returns current cursor position or None if hand not detected"""
+        return self._cur_smooth.peek()
 
     # ── Utilities ─────────────────────────────────────────────────────────────
     def clear(self) -> None:
         self.canvas[:] = 0
         self._prev_draw_pt = None
         print("Canvas cleared.")
+    
+    def clear_canvas(self) -> None:
+        """Alias for clear() - clears the drawing canvas"""
+        self.clear()
 
     def save(self, path: str = "air_canvas.png") -> None:
         cv2.imwrite(path, self.canvas)
