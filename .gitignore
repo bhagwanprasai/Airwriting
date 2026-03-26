@@ -1,5 +1,6 @@
 venv/
 bender
+fast
 env/
 
 .env

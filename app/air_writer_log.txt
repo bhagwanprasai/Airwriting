@@ -1,0 +1,53 @@
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+W0000 00:00:1773978513.629177    9820 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1773978513.650106   10592 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+D:\code\python\TEst\bender\Lib\site-packages\google\protobuf\symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+======================================================================
+AIR WRITER - HTR MODEL INTEGRATION
+======================================================================
+Gestures:
+  Index finger only -> Draw
+  Both fingers up   -> Hold (pen lifted)
+
+Controls:
+  R   -> Recognize with HTR model & save to web app
+  C   -> Clear canvas
+  S   -> Save PNG locally
+  Q   -> Quit
+======================================================================
+
+Loading HTR model...
+Model loaded from D:\code\python\TEst\app\model\ema_model.pth
+  Device: cpu
+  Vocabulary size: 85
+Model loaded successfully on cpu
+
+Checking web app connection...
+Connected to web app at http://localhost:5000
+
+Initializing webcam...
+Webcam ready
+
+======================================================================
+READY! Show your hand to the camera
+  Use index finger to draw, press R to recognize
+======================================================================
+
+
+--------------------------------------------------
+Recognizing...
+Recognized: 'a'
+  Confidence: 4.53%
+Appended to active note in web app!
+Canvas cleared - ready for next word
+Traceback (most recent call last):
+  File "D:\code\python\TEst\app\air_writer.py", line 471, in <module>
+    main()
+  File "D:\code\python\TEst\app\air_writer.py", line 462, in main
+    print("\u2500" * 50 + "\n")
+  File "C:\Users\Asus\AppData\Local\Programs\Python\Python311\Lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 0-49: character maps to <undefined>

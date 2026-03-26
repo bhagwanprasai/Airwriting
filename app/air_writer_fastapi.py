@@ -1,6 +1,6 @@
 """
-Air Writer with HTR Model Integration
-======================================
+Air Writer with HTR Model Integration - FastAPI Compatible
+===========================================================
 Write in the air with hand gestures → Real HTR recognition
 
 Gestures:
@@ -39,12 +39,12 @@ from htr_model import Seq2SeqAttention, LabelEncoder, DEFAULT_VOCAB, load_model
 # CONFIGURATION
 # ══════════════════════════════════════════════════════════════════════════
 
-# Web app API endpoint
-WEB_APP_URL = "http://localhost:5000"
+# Web app API endpoint (FastAPI runs on port 8000)
+WEB_APP_URL = "http://localhost:8000"
 API_AIR_WRITING = f"{WEB_APP_URL}/api/air-writing/recognize"
 
 # Hardcoded paths
-MODEL_PATH = Path(r"D:/code/python/TEst/WebApp/model/ema_model.pth")
+MODEL_PATH = Path(r"D:/code/python/TEst/app/model/ema_model.pth")
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # Canvas size
@@ -169,13 +169,13 @@ class GestureState:
 # ══════════════════════════════════════════════════════════════════════════
 
 class WebAppClient:
-    """Client to communicate with Flask web app"""
+    """Client to communicate with FastAPI web app"""
     
     @staticmethod
     def recognize_and_send(canvas):
         """
         Send RAW canvas to API.
-        Flask handles ALL preprocessing (invert, crop, resize).
+        FastAPI handles ALL preprocessing (invert, crop, resize).
         """
         try:
             # Convert canvas to grayscale if needed
@@ -222,7 +222,7 @@ class WebAppClient:
 
 def main():
     print("="*70)
-    print("AIR WRITER - HTR MODEL INTEGRATION")
+    print("AIR WRITER - HTR MODEL INTEGRATION (FastAPI)")
     print("="*70)
     print("Gestures:")
     print("  Index finger only → Draw")
@@ -240,7 +240,9 @@ def main():
         print(f"✓ Connected to {WEB_APP_URL}")
     else:
         print(f"⚠ Cannot connect to {WEB_APP_URL}")
-        print("  Make sure Flask is running: python flask_app.py")
+        print("  Make sure FastAPI is running:")
+        print("  python fastapi_app.py")
+        print("  OR: uvicorn fastapi_app:app --reload")
         print("  And you clicked 'Start Air Writing' in browser")
     
     # Initialize webcam
@@ -350,7 +352,7 @@ def main():
                 continue
             
             try:
-                # Send RAW canvas to Flask (Flask does ALL preprocessing)
+                # Send RAW canvas to FastAPI (FastAPI does ALL preprocessing)
                 success, text, confidence = WebAppClient.recognize_and_send(canvas)
                 
                 if success:

@@ -1,0 +1,1154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTR Notes - Air Writing (Browser Camera)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --bg-primary: #0f0f0f; --bg-secondary: #1a1a1a; --bg-elevated: #232323;
+            --border: #2d2d2d; --border-hover: #404040;
+            --text-primary: #ffffff; --text-secondary: #a0a0a0; --text-muted: #666666;
+            --accent: #3b82f6; --accent-hover: #2563eb; --accent-light: rgba(59, 130, 246, 0.1);
+            --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
+        }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary); color: var(--text-primary);
+            line-height: 1.6; -webkit-font-smoothing: antialiased;
+        }
+        .app-container { display: flex; height: 100vh; overflow: hidden; }
+        .sidebar {
+            width: 320px; background: var(--bg-secondary);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .sidebar-header { padding: 24px 20px; border-bottom: 1px solid var(--border); }
+        .app-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
+        .app-subtitle { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+        .ws-status { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-muted); margin-top: 8px; }
+        .ws-indicator { width: 6px; height: 6px; border-radius: 50%; background: var(--danger); }
+        .ws-indicator.connected { background: var(--success); animation: pulse 2s infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        .notes-actions { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+        .btn-new-note {
+            width: 100%; padding: 12px 16px; background: var(--accent); color: white;
+            border: none; border-radius: 8px; font-size: 14px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s ease; display: flex;
+            align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-new-note:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-new-note:disabled { opacity: 0.7; cursor: wait; transform: none; }
+        .notes-list { flex: 1; overflow-y: auto; padding: 12px; }
+        .note-item {
+            padding: 14px 16px; background: var(--bg-elevated);
+            border: 1px solid var(--border); border-radius: 8px;
+            margin-bottom: 8px; cursor: pointer; transition: all 0.2s ease;
+        }
+        .note-item:hover { background: #2a2a2a; border-color: var(--border-hover); }
+        .note-item.active { background: var(--accent-light); border-color: var(--accent); }
+        .note-preview { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .note-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); }
+        .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .editor-header { padding: 20px 32px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .editor-title { font-size: 14px; color: var(--text-muted); }
+        .editor-actions { display: flex; gap: 8px; }
+        .btn-icon {
+            width: 36px; height: 36px; background: transparent; border: 1px solid var(--border);
+            border-radius: 6px; color: var(--text-secondary); cursor: pointer;
+            transition: all 0.2s ease; display: flex; align-items: center; justify-content: center;
+        }
+        .btn-icon:hover { background: var(--bg-elevated); border-color: var(--border-hover); color: var(--text-primary); }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-danger { border-color: var(--danger); color: var(--danger); }
+        .btn-icon.active { background: var(--warning); border-color: var(--warning); color: black; }
+        
+        .editor-content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        .note-textarea {
+            flex: 1; padding: 32px; background: transparent; border: none;
+            color: var(--text-primary); font-size: 15px; line-height: 1.8;
+            resize: none; outline: none; font-family: 'Inter', sans-serif;
+        }
+        .stats-bar { padding: 12px 32px; background: var(--bg-secondary); border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-muted); }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0, 0, 0, 0.85); z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.active { display: flex; }
+        .modal-content { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 16px; width: 90%; max-width: 1000px; max-height: 90vh; overflow: hidden; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; }
+        .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 18px; font-weight: 600; }
+        .modal-close { background: transparent; border: none; color: var(--text-secondary); cursor: pointer; padding: 8px; border-radius: 6px; }
+        .modal-close:hover { background: var(--bg-elevated); color: var(--text-primary); }
+        .modal-body { padding: 24px; flex: 1; overflow-y: auto; }
+        
+        .camera-container { display: flex; height: 100%; justify-content: center; }
+        .camera-panel { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; width: 100%; }
+        .panel-header { font-size: 14px; font-weight: 600; margin-bottom: 12px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+        .gesture-hint { font-size: 12px; color: var(--text-muted); font-weight: normal; }
+        .video-wrapper { flex: 1; position: relative; background: #000; border-radius: 8px; overflow: hidden; min-height: 500px; }
+        
+        /* Video is mirrored so user sees themselves like a mirror */
+        #cameraVideo { 
+            width: 100%; 
+            height: 100%; 
+            object-fit: contain; 
+            transform: scaleX(-1);
+        }
+        
+        /* Canvas overlays - same orientation as video */
+        #landmarkCanvas { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            pointer-events: none;
+        }
+        #drawingCanvas { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            pointer-events: none;
+        }
+        
+        .camera-placeholder { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: var(--text-muted); }
+        .modal-controls { padding: 20px 24px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+        .control-buttons { display: flex; gap: 12px; flex-wrap: wrap; }
+        .btn-modal {
+            padding: 10px 20px; border: 1px solid var(--border); border-radius: 8px;
+            background: var(--bg-elevated); color: var(--text-primary);
+            font-size: 14px; font-weight: 500; cursor: pointer;
+            transition: all 0.2s ease; display: flex; align-items: center; gap: 8px;
+        }
+        .btn-modal:hover:not(:disabled) { background: var(--bg-primary); border-color: var(--border-hover); }
+        .btn-modal:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-modal.primary { background: var(--accent); border-color: var(--accent); }
+        .btn-modal.primary:hover:not(:disabled) { background: var(--accent-hover); }
+        .btn-modal.success { background: var(--success); border-color: var(--success); }
+        .btn-modal.warning { background: var(--warning); border-color: var(--warning); color: black; }
+        
+        .status-indicator { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
+        .status-dot.active { background: var(--success); animation: pulse 2s infinite; }
+        .status-dot.drawing { background: var(--accent); }
+        .toast { position: fixed; bottom: 24px; right: 24px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; max-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5); z-index: 2000; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .toast.success { border-left: 3px solid var(--success); } .toast.error { border-left: 3px solid var(--danger); } .toast.info { border-left: 3px solid var(--accent); }
+        ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+        
+        /* Debug info overlay */
+        .debug-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #0f0;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 11px;
+            z-index: 10;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1 class="app-title">HTR Notes</h1>
+                <p class="app-subtitle">Air Writing (Browser Camera)</p>
+                <div class="ws-status">
+                    <div class="ws-indicator" id="wsIndicator"></div>
+                    <span id="wsStatus">Connecting...</span>
+                </div>
+            </div>
+            <div class="notes-actions">
+                <button class="btn-new-note" id="newNoteBtn">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3v10M3 8h10"/></svg>
+                    New Note
+                </button>
+            </div>
+            <div class="notes-list" id="notesList"><div class="empty-state"><div class="empty-state-icon">📝</div><p>No notes yet</p></div></div>
+        </aside>
+        <main class="main-content">
+            <div class="editor-header">
+                <div class="editor-title" id="editorTitle">Select a note or create a new one</div>
+                <div class="editor-actions">
+                    <button class="btn-icon" id="nightModeBtn" title="Toggle Night Mode (Gamma/CLAHE)">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                    </button>
+                    <button class="btn-icon" id="startAirWritingBtn" title="Start Air Writing" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                    </button>
+                    <button class="btn-icon btn-danger" id="deleteNoteBtn" title="Delete Note" disabled>
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="editor-content"><textarea class="note-textarea" id="noteTextarea" placeholder="Start writing or use air writing..." disabled></textarea></div>
+            <div class="stats-bar">
+                <div><span id="wordCount">0 words</span><span style="margin: 0 12px;">•</span><span id="charCount">0 characters</span></div>
+                <div id="lastSaved">Not saved</div>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal-overlay" id="cameraModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">✍️ Air Writing Camera</div>
+                <button class="modal-close" id="closeModal"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+            </div>
+            <div class="modal-body">
+                <div class="camera-container">
+                    <div class="camera-panel">
+                        <div class="panel-header">
+                            <span>📹 Write in the Air</span>
+                            <span class="gesture-hint">☝️ Index only = Draw | ✌️ Two fingers = Pause</span>
+                        </div>
+                        <div class="video-wrapper" id="videoWrapper">
+                            <video id="cameraVideo" autoplay playsinline></video>
+                            <canvas id="landmarkCanvas"></canvas>
+                            <canvas id="drawingCanvas"></canvas>
+                            <div class="camera-placeholder" id="cameraPlaceholder">
+                                <div class="camera-placeholder-icon">📷</div>
+                                <div>Click "Start Camera" below</div>
+                            </div>
+                            <div class="debug-overlay" id="debugOverlay" style="display: none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-controls">
+                <div class="status-indicator">
+                    <div class="status-dot" id="cameraStatus"></div>
+                    <span id="cameraStatusText">Camera Off</span>
+                </div>
+                <div class="control-buttons">
+                    <button class="btn-modal primary" id="startCameraBtn">Start Camera</button>
+                    <button class="btn-modal" id="clearCanvasBtn" disabled>Clear</button>
+                    <button class="btn-modal success" id="recognizeBtn" disabled>Recognize</button>
+                    <button class="btn-modal" id="stopCameraBtn" disabled>Stop Camera</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden canvas for Model Input (Black BG, White Text) -->
+    <canvas id="hiddenCanvas" style="display: none;"></canvas>
+    <!-- Hidden canvas for Night Mode preprocessing -->
+    <canvas id="nightModeCanvas" style="display: none;"></canvas>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+    <script>
+        // ══════════════════════════════════════════════════════════════════════════
+        // CONFIGURATION
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        const CONFIG = {
+            // Canvas dimensions (matches training)
+            CANVAS_WIDTH: 640,
+            CANVAS_HEIGHT: 480,
+            
+            // Smoothing (matches Python air_writer.py)
+            ALPHA_CURSOR: 0.25,
+            ALPHA_STROKE: 0.45,
+            
+            // Gesture detection
+            DEBOUNCE_FRAMES: 5,
+            GRACE_FRAMES: 10,
+            MIN_MOVE_PX: 1,
+            
+            // Drawing
+            PEN_COLOR: '#FFFFFF',
+            PEN_THICKNESS: 5,
+            
+            // WebSocket
+            WS_RECONNECT_DELAY: 2000,
+            WS_MAX_RECONNECT: 10,
+            WS_PING_INTERVAL: 30000,
+            
+            // Debug
+            DEBUG_MODE: false
+        };
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // EMA SMOOTHING CLASS
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        class EMA {
+            constructor(alpha = 0.3) { 
+                this.alpha = alpha; 
+                this.value = null; 
+            }
+            
+            update(newVal) {
+                if (this.value === null) {
+                    this.value = newVal;
+                } else {
+                    this.value = this.alpha * newVal + (1 - this.alpha) * this.value;
+                }
+                return this.value;
+            }
+            
+            reset() { 
+                this.value = null; 
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // GESTURE STATE MACHINE
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        const GestureState = {
+            drawing: false,
+            indexUpCounter: 0,
+            bothUpCounter: 0,
+            graceCounter: 0,
+            cursorEma: [new EMA(CONFIG.ALPHA_CURSOR), new EMA(CONFIG.ALPHA_CURSOR)],
+            strokeEma: [new EMA(CONFIG.ALPHA_STROKE), new EMA(CONFIG.ALPHA_STROKE)],
+            lastDrawPos: null,
+            
+            update: function(landmarks, canvasWidth, canvasHeight) {
+                if (!landmarks) {
+                    this.graceCounter++;
+                    if (this.graceCounter > CONFIG.GRACE_FRAMES) {
+                        this.reset();
+                    }
+                    return { cursor: null, stroke: null };
+                }
+                
+                this.graceCounter = 0;
+                
+                // Get finger tips and PIPs (proximal interphalangeal joints)
+                const indexTip = landmarks[8];
+                const middleTip = landmarks[12];
+                const indexPip = landmarks[6];
+                const middlePip = landmarks[10];
+                
+                // Check if fingers are extended (tip above PIP in Y)
+                // Note: In normalized coords, Y=0 is top, Y=1 is bottom
+                // So "up" means tip.y < pip.y
+                const indexUp = indexTip.y < indexPip.y - 0.02; // Small threshold for stability
+                const middleUp = middleTip.y < middlePip.y - 0.02;
+                
+                // Update counters with hysteresis
+                if (indexUp && !middleUp) {
+                    this.indexUpCounter++;
+                    this.bothUpCounter = 0;
+                } else if (indexUp && middleUp) {
+                    this.bothUpCounter++;
+                    this.indexUpCounter = 0;
+                } else {
+                    this.indexUpCounter = Math.max(0, this.indexUpCounter - 1);
+                    this.bothUpCounter = Math.max(0, this.bothUpCounter - 1);
+                }
+                
+                // State transitions
+                if (this.indexUpCounter >= CONFIG.DEBOUNCE_FRAMES) {
+                    this.drawing = true;
+                } else if (this.bothUpCounter >= CONFIG.DEBOUNCE_FRAMES) {
+                    this.drawing = false;
+                }
+                
+                // Get cursor position from FINGER TIP (landmark 8)
+                // MediaPipe returns normalized coordinates [0, 1]
+                // Mirror the x coordinate to match the mirrored video view
+                // so drawing appears where the user sees their finger
+                const rawX = (1 - indexTip.x) * canvasWidth;  // Mirror to match mirrored video
+                const rawY = indexTip.y * canvasHeight;
+                
+                // Apply EMA smoothing
+                const cursorX = this.cursorEma[0].update(rawX);
+                const cursorY = this.cursorEma[1].update(rawY);
+                
+                let strokeX = null, strokeY = null;
+                
+                if (this.drawing) {
+                    strokeX = this.strokeEma[0].update(cursorX);
+                    strokeY = this.strokeEma[1].update(cursorY);
+                } else {
+                    this.strokeEma[0].reset();
+                    this.strokeEma[1].reset();
+                    this.lastDrawPos = null;
+                }
+                
+                return {
+                    cursor: { x: cursorX, y: cursorY },
+                    stroke: (strokeX !== null) ? { x: strokeX, y: strokeY } : null,
+                    fingers: { indexUp, middleUp }
+                };
+            },
+            
+            reset: function() {
+                this.drawing = false;
+                this.indexUpCounter = 0;
+                this.bothUpCounter = 0;
+                this.graceCounter = 0;
+                this.cursorEma.forEach(e => e.reset());
+                this.strokeEma.forEach(e => e.reset());
+                this.lastDrawPos = null;
+            }
+        };
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // APPLICATION STATE
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        let currentNoteId = null;
+        let notes = [];
+        let ws = null;
+        let wsReconnectAttempts = 0;
+        let wsPingInterval = null;
+
+        let cameraStream = null;
+        let hands = null;
+        let camera = null;
+        
+        // Canvas references
+        let hiddenCanvas = null;    // For model input (black bg, white text)
+        let hiddenCtx = null;
+        let landmarkCanvas = null;  // For hand skeleton overlay
+        let landmarkCtx = null;
+        let drawingCanvas = null;   // For persistent drawing overlay
+        let drawingCtx = null;
+        
+        // State flags
+        let airWritingActive = false;
+        let nightModeActive = false;
+        let cameraRunning = false;
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // DOM ELEMENTS
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        const elements = {
+            notesList: document.getElementById('notesList'),
+            noteTextarea: document.getElementById('noteTextarea'),
+            newNoteBtn: document.getElementById('newNoteBtn'),
+            nightModeBtn: document.getElementById('nightModeBtn'),
+            startAirWritingBtn: document.getElementById('startAirWritingBtn'),
+            deleteNoteBtn: document.getElementById('deleteNoteBtn'),
+            editorTitle: document.getElementById('editorTitle'),
+            wordCount: document.getElementById('wordCount'),
+            charCount: document.getElementById('charCount'),
+            lastSaved: document.getElementById('lastSaved'),
+            wsIndicator: document.getElementById('wsIndicator'),
+            wsStatus: document.getElementById('wsStatus'),
+            
+            cameraModal: document.getElementById('cameraModal'),
+            closeModal: document.getElementById('closeModal'),
+            cameraVideo: document.getElementById('cameraVideo'),
+            videoWrapper: document.getElementById('videoWrapper'),
+            cameraPlaceholder: document.getElementById('cameraPlaceholder'),
+            startCameraBtn: document.getElementById('startCameraBtn'),
+            stopCameraBtn: document.getElementById('stopCameraBtn'),
+            clearCanvasBtn: document.getElementById('clearCanvasBtn'),
+            recognizeBtn: document.getElementById('recognizeBtn'),
+            cameraStatus: document.getElementById('cameraStatus'),
+            cameraStatusText: document.getElementById('cameraStatusText'),
+            debugOverlay: document.getElementById('debugOverlay')
+        };
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // INITIALIZATION
+        // ══════════════════════════════════════════════════════════════════════════
+        
+        function initializeApp() {
+            initializeCanvases();
+            loadNotes();
+            connectWebSocket();
+            setupEventListeners();
+            
+            // Enable debug mode with URL parameter
+            if (window.location.search.includes('debug=1')) {
+                CONFIG.DEBUG_MODE = true;
+                elements.debugOverlay.style.display = 'block';
+            }
+        }
+
+        function initializeCanvases() {
+            // 1. Hidden Canvas (For Model Data - White on Black)
+            hiddenCanvas = document.getElementById('hiddenCanvas');
+            hiddenCtx = hiddenCanvas.getContext('2d');
+            hiddenCanvas.width = CONFIG.CANVAS_WIDTH;
+            hiddenCanvas.height = CONFIG.CANVAS_HEIGHT;
+            
+            // Initialize with black background
+            hiddenCtx.fillStyle = '#000000';
+            hiddenCtx.fillRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+            
+            // 2. Landmark Canvas (Hand skeleton overlay)
+            landmarkCanvas = document.getElementById('landmarkCanvas');
+            landmarkCtx = landmarkCanvas.getContext('2d');
+            
+            // 3. Drawing Canvas (Persistent drawing overlay)
+            drawingCanvas = document.getElementById('drawingCanvas');
+            drawingCtx = drawingCanvas.getContext('2d');
+            
+            console.log('Canvases initialized:', {
+                hidden: `${hiddenCanvas.width}x${hiddenCanvas.height}`,
+                landmark: `${landmarkCanvas.width}x${landmarkCanvas.height}`,
+                drawing: `${drawingCanvas.width}x${drawingCanvas.height}`
+            });
+        }
+
+        function setupEventListeners() {
+            elements.newNoteBtn.addEventListener('click', createNewNote);
+            elements.nightModeBtn.addEventListener('click', toggleNightMode);
+            elements.startAirWritingBtn.addEventListener('click', openCameraModal);
+            elements.deleteNoteBtn.addEventListener('click', deleteCurrentNote);
+            elements.noteTextarea.addEventListener('input', handleTextChange);
+            
+            elements.closeModal.addEventListener('click', closeCameraModal);
+            elements.startCameraBtn.addEventListener('click', startCamera);
+            elements.stopCameraBtn.addEventListener('click', stopCamera);
+            elements.clearCanvasBtn.addEventListener('click', clearCanvas);
+            elements.recognizeBtn.addEventListener('click', recognizeText);
+            
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && elements.cameraModal.classList.contains('active')) {
+                    closeCameraModal();
+                }
+            });
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // CANVAS OPERATIONS
+        // ══════════════════════════════════════════════════════════════════════════
+
+        function clearCanvas() {
+            // Clear hidden canvas (fill black)
+            hiddenCtx.fillStyle = '#000000';
+            hiddenCtx.fillRect(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+            
+            // Clear visible drawing canvas
+            if (drawingCtx && drawingCanvas.width > 0 && drawingCanvas.height > 0) {
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            }
+            
+            GestureState.lastDrawPos = null;
+            showToast('Canvas Cleared', 'info');
+        }
+
+        function drawLine(from, to) {
+            if (!from || !to) return;
+            
+            // Validate coordinates
+            if (!isFinite(from.x) || !isFinite(from.y) || !isFinite(to.x) || !isFinite(to.y)) {
+                console.warn('Invalid draw coordinates:', from, to);
+                return;
+            }
+            
+            // 1. Draw on Hidden Canvas (White on Black for Model)
+            hiddenCtx.strokeStyle = CONFIG.PEN_COLOR;
+            hiddenCtx.lineWidth = CONFIG.PEN_THICKNESS;
+            hiddenCtx.lineCap = 'round';
+            hiddenCtx.lineJoin = 'round';
+            hiddenCtx.beginPath();
+            hiddenCtx.moveTo(from.x, from.y);
+            hiddenCtx.lineTo(to.x, to.y);
+            hiddenCtx.stroke();
+            
+            // 2. Draw on Visible Drawing Canvas (for user feedback)
+            if (drawingCtx && drawingCanvas.width > 0 && drawingCanvas.height > 0) {
+                // Scale coordinates from hidden canvas to visible canvas
+                const scaleX = drawingCanvas.width / hiddenCanvas.width;
+                const scaleY = drawingCanvas.height / hiddenCanvas.height;
+                
+                drawingCtx.strokeStyle = CONFIG.PEN_COLOR;
+                drawingCtx.lineWidth = CONFIG.PEN_THICKNESS;
+                drawingCtx.lineCap = 'round';
+                drawingCtx.lineJoin = 'round';
+                drawingCtx.beginPath();
+                drawingCtx.moveTo(from.x * scaleX, from.y * scaleY);
+                drawingCtx.lineTo(to.x * scaleX, to.y * scaleY);
+                drawingCtx.stroke();
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // CAMERA & MEDIAPIPE
+        // ══════════════════════════════════════════════════════════════════════════
+
+        async function startCamera() {
+            try {
+                elements.startCameraBtn.disabled = true;
+                elements.startCameraBtn.textContent = 'Starting...';
+                
+                // Request camera with ideal settings
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: CONFIG.CANVAS_WIDTH },
+                        height: { ideal: CONFIG.CANVAS_HEIGHT },
+                        facingMode: 'user',
+                        frameRate: { ideal: 30 }
+                    }
+                });
+                
+                elements.cameraVideo.srcObject = cameraStream;
+                
+                // Wait for video metadata
+                await new Promise((resolve) => {
+                    elements.cameraVideo.onloadedmetadata = () => {
+                        // Resize canvases to match video
+                        const videoWidth = elements.cameraVideo.videoWidth;
+                        const videoHeight = elements.cameraVideo.videoHeight;
+                        
+                        landmarkCanvas.width = videoWidth;
+                        landmarkCanvas.height = videoHeight;
+                        drawingCanvas.width = videoWidth;
+                        drawingCanvas.height = videoHeight;
+                        
+                        console.log('Video dimensions:', videoWidth, 'x', videoHeight);
+                        resolve();
+                    };
+                });
+                
+                elements.cameraPlaceholder.style.display = 'none';
+                elements.cameraStatus.classList.add('active');
+                elements.cameraStatusText.textContent = 'Camera Active';
+                
+                elements.startCameraBtn.disabled = true;
+                elements.stopCameraBtn.disabled = false;
+                elements.clearCanvasBtn.disabled = false;
+                elements.recognizeBtn.disabled = false;
+                
+                cameraRunning = true;
+                
+                await initializeMediaPipe();
+                
+                showToast('Camera started', 'success');
+                
+            } catch (error) {
+                console.error('Camera start error:', error);
+                showToast('Could not access camera: ' + error.message, 'error');
+                elements.startCameraBtn.disabled = false;
+                elements.startCameraBtn.textContent = 'Start Camera';
+            }
+        }
+
+        function stopCamera() {
+            if (cameraStream) {
+                cameraStream.getTracks().forEach(track => track.stop());
+                cameraStream = null;
+            }
+            
+            elements.cameraVideo.srcObject = null;
+            elements.cameraPlaceholder.style.display = 'block';
+            
+            if (landmarkCtx) {
+                landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+            }
+            if (drawingCtx) {
+                drawingCtx.clearRect(0, 0, drawingCanvas.width, drawingCanvas.height);
+            }
+            
+            GestureState.reset();
+            cameraRunning = false;
+            
+            elements.cameraStatus.classList.remove('active', 'drawing');
+            elements.cameraStatusText.textContent = 'Camera Off';
+            
+            elements.startCameraBtn.disabled = false;
+            elements.startCameraBtn.textContent = 'Start Camera';
+            elements.stopCameraBtn.disabled = true;
+            elements.clearCanvasBtn.disabled = true;
+            elements.recognizeBtn.disabled = true;
+        }
+
+        async function initializeMediaPipe() {
+            hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 0,  // 0 = fastest
+                minDetectionConfidence: 0.6,
+                minTrackingConfidence: 0.6
+            });
+            
+            hands.onResults(onHandsResults);
+            
+            // Start processing frames
+            processFrame();
+        }
+
+        async function processFrame() {
+            if (!cameraRunning || !cameraStream) return;
+            
+            if (elements.cameraVideo.readyState >= 2) {
+                try {
+                    await hands.send({ image: elements.cameraVideo });
+                } catch (e) {
+                    console.error('MediaPipe error:', e);
+                }
+            }
+            
+            requestAnimationFrame(processFrame);
+        }
+
+        const HAND_CONNECTIONS = [
+            [0, 1], [1, 2], [2, 3], [3, 4],
+            [0, 5], [5, 6], [6, 7], [7, 8],
+            [0, 9], [9, 10], [10, 11], [11, 12],
+            [0, 13], [13, 14], [14, 15], [15, 16],
+            [0, 17], [17, 18], [18, 19], [19, 20],
+            [5, 9], [9, 13], [13, 17]
+        ];
+
+        function onHandsResults(results) {
+            if (!landmarkCtx || !landmarkCanvas.width || !landmarkCanvas.height) return;
+            
+            // Clear only the landmark canvas (skeleton)
+            landmarkCtx.clearRect(0, 0, landmarkCanvas.width, landmarkCanvas.height);
+            
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Draw hand skeleton (with mirrored coordinates)
+                drawHandSkeleton(landmarks);
+                
+                // Process gesture state with proper canvas dimensions
+                const state = GestureState.update(
+                    landmarks,
+                    hiddenCanvas.width,  // Use hidden canvas dimensions
+                    hiddenCanvas.height
+                );
+                
+                // Drawing logic
+                if (state.stroke && GestureState.drawing) {
+                    updateDrawingStatus(true);
+                    
+                    if (GestureState.lastDrawPos) {
+                        const dx = state.stroke.x - GestureState.lastDrawPos.x;
+                        const dy = state.stroke.y - GestureState.lastDrawPos.y;
+                        
+                        if (Math.abs(dx) >= CONFIG.MIN_MOVE_PX || Math.abs(dy) >= CONFIG.MIN_MOVE_PX) {
+                            drawLine(GestureState.lastDrawPos, state.stroke);
+                        }
+                    }
+                    GestureState.lastDrawPos = { x: state.stroke.x, y: state.stroke.y };
+                } else {
+                    updateDrawingStatus(false);
+                }
+                
+                // Debug output
+                if (CONFIG.DEBUG_MODE) {
+                    updateDebugInfo(landmarks, state);
+                }
+            } else {
+                GestureState.update(null);
+                updateDrawingStatus(false);
+            }
+        }
+
+        function drawHandSkeleton(landmarks) {
+            // Draw connections
+            landmarkCtx.strokeStyle = '#00FF00';
+            landmarkCtx.lineWidth = 2;
+            
+            for (const [start, end] of HAND_CONNECTIONS) {
+                const p1 = landmarks[start];
+                const p2 = landmarks[end];
+                
+                // Mirror x coordinates to match mirrored video
+                const x1 = (1 - p1.x) * landmarkCanvas.width;
+                const y1 = p1.y * landmarkCanvas.height;
+                const x2 = (1 - p2.x) * landmarkCanvas.width;
+                const y2 = p2.y * landmarkCanvas.height;
+                
+                landmarkCtx.beginPath();
+                landmarkCtx.moveTo(x1, y1);
+                landmarkCtx.lineTo(x2, y2);
+                landmarkCtx.stroke();
+            }
+            
+            // Draw joints
+            landmarkCtx.fillStyle = '#00FF00';
+            for (const point of landmarks) {
+                // Mirror x coordinate to match mirrored video
+                const x = (1 - point.x) * landmarkCanvas.width;
+                const y = point.y * landmarkCanvas.height;
+                landmarkCtx.fillRect(x - 2, y - 2, 4, 4);
+            }
+        }
+
+        function updateDrawingStatus(drawing) {
+            if (drawing) {
+                elements.cameraStatus.classList.add('drawing');
+                elements.cameraStatusText.textContent = 'Drawing...';
+            } else {
+                elements.cameraStatus.classList.remove('drawing');
+                elements.cameraStatusText.textContent = 'Camera Active';
+            }
+        }
+
+        function updateDebugInfo(landmarks, state) {
+            const indexTip = landmarks[8];
+            const middleTip = landmarks[12];
+            
+            elements.debugOverlay.innerHTML = `
+                Index: (${(indexTip.x * 100).toFixed(1)}%, ${(indexTip.y * 100).toFixed(1)}%)<br>
+                Cursor: (${state.cursor ? state.cursor.x.toFixed(0) : '-'}, ${state.cursor ? state.cursor.y.toFixed(0) : '-'})<br>
+                Drawing: ${GestureState.drawing}<br>
+                Counter: ${GestureState.indexUpCounter}/${CONFIG.DEBOUNCE_FRAMES}
+            `;
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // RECOGNITION
+        // ══════════════════════════════════════════════════════════════════════════
+
+        async function recognizeText() {
+            if (!airWritingActive) {
+                showToast('No active session', 'error');
+                return;
+            }
+            
+            // Check if canvas has content
+            const imageData = hiddenCtx.getImageData(0, 0, hiddenCanvas.width, hiddenCanvas.height);
+            const hasContent = imageData.data.some((val, i) => i % 4 === 0 && val > 0);
+            
+            if (!hasContent) {
+                showToast('Canvas is empty - draw something first', 'error');
+                return;
+            }
+            
+            elements.recognizeBtn.disabled = true;
+            elements.recognizeBtn.textContent = 'Recognizing...';
+            
+            try {
+                const canvasData = hiddenCanvas.toDataURL('image/png');
+                
+                const response = await fetch('/api/air-writing/recognize', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: canvasData })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showToast(`Recognized: "${result.text}" (${(result.confidence * 100).toFixed(0)}%)`, 'success');
+                    clearCanvas();
+                } else {
+                    showToast('Recognition failed: ' + (result.error || result.detail || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Recognition error:', error);
+                showToast('Failed to send image: ' + error.message, 'error');
+            } finally {
+                elements.recognizeBtn.disabled = false;
+                elements.recognizeBtn.textContent = 'Recognize';
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // WEBSOCKET
+        // ══════════════════════════════════════════════════════════════════════════
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/notes`;
+            
+            try {
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = () => {
+                    elements.wsIndicator.classList.add('connected');
+                    elements.wsStatus.textContent = 'Connected';
+                    wsReconnectAttempts = 0;
+                    
+                    // Start ping interval
+                    if (wsPingInterval) clearInterval(wsPingInterval);
+                    wsPingInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send('ping');
+                        }
+                    }, CONFIG.WS_PING_INTERVAL);
+                };
+                
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (e) {
+                        // Ignore parse errors for pong messages
+                    }
+                };
+                
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                };
+                
+                ws.onclose = () => {
+                    elements.wsIndicator.classList.remove('connected');
+                    elements.wsStatus.textContent = 'Disconnected';
+                    
+                    if (wsPingInterval) {
+                        clearInterval(wsPingInterval);
+                        wsPingInterval = null;
+                    }
+                    
+                    // Attempt reconnect
+                    if (wsReconnectAttempts < CONFIG.WS_MAX_RECONNECT) {
+                        wsReconnectAttempts++;
+                        elements.wsStatus.textContent = `Reconnecting (${wsReconnectAttempts})...`;
+                        setTimeout(connectWebSocket, CONFIG.WS_RECONNECT_DELAY);
+                    }
+                };
+            } catch (error) {
+                console.error('WebSocket connection failed:', error);
+            }
+        }
+
+        function handleWebSocketMessage(data) {
+            if (data.type === 'pong') return;
+            
+            if (data.type === 'note_created') {
+                if (!notes.find(n => n.id == data.note.id)) {
+                    notes.unshift(data.note);
+                    renderNotes();
+                }
+            } else if (data.type === 'note_updated') {
+                const index = notes.findIndex(n => n.id == data.note.id);
+                if (index !== -1) {
+                    notes[index] = data.note;
+                    if (currentNoteId == data.note.id) {
+                        elements.noteTextarea.value = data.note.text;
+                        updateStats();
+                    }
+                    renderNotes();
+                }
+            } else if (data.type === 'note_deleted') {
+                notes = notes.filter(n => n.id != data.note_id);
+                if (currentNoteId == data.note_id) {
+                    currentNoteId = null;
+                    elements.noteTextarea.value = '';
+                    elements.noteTextarea.disabled = true;
+                    elements.startAirWritingBtn.disabled = true;
+                    elements.deleteNoteBtn.disabled = true;
+                    elements.editorTitle.textContent = 'Select a note';
+                }
+                renderNotes();
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // NOTES MANAGEMENT
+        // ══════════════════════════════════════════════════════════════════════════
+
+        async function loadNotes() {
+            try {
+                const response = await fetch('/api/notes');
+                const data = await response.json();
+                if (data.success) {
+                    notes = data.notes;
+                    renderNotes();
+                }
+            } catch (error) {
+                console.error('Failed to load notes:', error);
+            }
+        }
+
+        function renderNotes() {
+            if (notes.length === 0) {
+                elements.notesList.innerHTML = `<div class="empty-state"><p>No notes yet</p></div>`;
+                return;
+            }
+            
+            elements.notesList.innerHTML = notes.map(note => `
+                <div class="note-item ${note.id == currentNoteId ? 'active' : ''}" onclick="selectNote(${note.id})">
+                    <div class="note-preview">${escapeHtml(note.text) || 'Empty note'}</div>
+                    <div class="note-meta">
+                        <span>${new Date(note.created_at).toLocaleDateString()}</span>
+                        <span>${note.text ? note.text.length + ' chars' : ''}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function createNewNote() {
+            elements.newNoteBtn.disabled = true;
+            elements.newNoteBtn.textContent = 'Creating...';
+            
+            try {
+                const response = await fetch('/api/notes', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: '', confidence: 0 })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    const exists = notes.find(n => n.id == data.note.id);
+                    if (!exists) {
+                        notes.unshift(data.note);
+                    }
+                    selectNote(data.note.id);
+                    renderNotes();
+                }
+            } catch (error) {
+                showToast('Failed to create note', 'error');
+                console.error(error);
+            } finally {
+                elements.newNoteBtn.disabled = false;
+                elements.newNoteBtn.textContent = 'New Note';
+            }
+        }
+
+        function selectNote(noteId) {
+            currentNoteId = noteId;
+            const note = notes.find(n => n.id == noteId);
+            
+            if (note) {
+                elements.noteTextarea.value = note.text || '';
+                elements.noteTextarea.disabled = false;
+                elements.startAirWritingBtn.disabled = false;
+                elements.deleteNoteBtn.disabled = false;
+                elements.editorTitle.textContent = `Note #${note.id}`;
+                updateStats();
+                renderNotes();
+            }
+        }
+
+        function handleTextChange() {
+            updateStats();
+            saveCurrentNote();
+        }
+
+        function updateStats() {
+            const text = elements.noteTextarea.value;
+            const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+            elements.wordCount.textContent = `${words} words`;
+            elements.charCount.textContent = `${text.length} characters`;
+        }
+
+        let saveTimeout;
+        async function saveCurrentNote() {
+            if (!currentNoteId) return;
+            
+            clearTimeout(saveTimeout);
+            saveTimeout = setTimeout(async () => {
+                try {
+                    await fetch(`/api/notes/${currentNoteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: elements.noteTextarea.value })
+                    });
+                    elements.lastSaved.textContent = 'Saved ' + new Date().toLocaleTimeString();
+                } catch (e) {
+                    console.error('Save failed:', e);
+                }
+            }, 500);
+        }
+
+        async function deleteCurrentNote() {
+            if (!currentNoteId || !confirm('Delete this note?')) return;
+            
+            try {
+                await fetch(`/api/notes/${currentNoteId}`, { method: 'DELETE' });
+                notes = notes.filter(n => n.id != currentNoteId);
+                currentNoteId = null;
+                elements.noteTextarea.value = '';
+                elements.noteTextarea.disabled = true;
+                elements.startAirWritingBtn.disabled = true;
+                elements.deleteNoteBtn.disabled = true;
+                elements.editorTitle.textContent = 'Select a note';
+                renderNotes();
+            } catch (e) {
+                showToast('Delete failed', 'error');
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // MODAL & MISC
+        // ══════════════════════════════════════════════════════════════════════════
+
+        async function openCameraModal() {
+            if (!currentNoteId) {
+                showToast('Please select a note first!', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/air-writing/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note_id: currentNoteId })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    airWritingActive = true;
+                    elements.cameraModal.classList.add('active');
+                    showToast('Air writing session started', 'success');
+                } else {
+                    showToast(result.error || result.detail || 'Failed to start session', 'error');
+                }
+            } catch (error) {
+                showToast('Failed to start air writing', 'error');
+                console.error(error);
+            }
+        }
+
+        function closeCameraModal() {
+            stopCamera();
+            
+            elements.cameraModal.classList.remove('active');
+            
+            if (airWritingActive) {
+                fetch('/api/air-writing/stop', { method: 'POST' })
+                    .then(() => {
+                        airWritingActive = false;
+                        showToast('Session stopped', 'info');
+                    })
+                    .catch(e => console.error('Stop session error:', e));
+            }
+        }
+
+        function toggleNightMode() {
+            nightModeActive = !nightModeActive;
+            if (nightModeActive) {
+                elements.nightModeBtn.classList.add('active');
+                showToast('Night Mode Enabled', 'info');
+            } else {
+                elements.nightModeBtn.classList.remove('active');
+                showToast('Night Mode Disabled', 'info');
+            }
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ══════════════════════════════════════════════════════════════════════════
+        // START APPLICATION
+        // ══════════════════════════════════════════════════════════════════════════
+
+        initializeApp();
+    </script>
+</body>
+</html>
